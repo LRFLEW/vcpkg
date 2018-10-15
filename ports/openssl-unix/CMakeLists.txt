@@ -37,15 +37,24 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CFLAGS "-Wno-error=unused-command-line-argument ${CMAKE_C_FLAGS}")
 endif()
 if(CMAKE_C_COMPILER_TARGET)
-    set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_TARGET}${CMAKE_C_COMPILER_TARGET}")
+    set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_TARGET} ${CMAKE_C_COMPILER_TARGET}")
 endif()
 if(CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN)
-    set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN}${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN}")
+    set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_EXTERNAL_TOOLCHAIN} ${CMAKE_C_COMPILER_EXTERNAL_TOOLCHAIN}")
 endif()
 if(CMAKE_SYSROOT AND CMAKE_C_COMPILE_OPTIONS_SYSROOT)
     set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_SYSROOT}${CMAKE_SYSROOT}")
 elseif(CMAKE_OSX_SYSROOT AND CMAKE_C_COMPILE_OPTIONS_SYSROOT)
     set(CFLAGS "${CFLAGS} ${CMAKE_C_COMPILE_OPTIONS_SYSROOT}${CMAKE_OSX_SYSROOT}")
+
+# Add macOS-specific flags
+if(APPLE)
+    if(CMAKE_OSX_SYSROOT AND CMAKE_C_SYSROOT_FLAG AND NOT CFLAGS MATCHES " ${CMAKE_C_SYSROOT_FLAG} ")
+        set(CFLAGS "${CFLAGS} ${CMAKE_C_SYSROOT_FLAG} ${CMAKE_OSX_SYSROOT}")
+    endif()
+    if(CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG AND NOT CFLAGS MATCHES " ${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG} ")
+        set(CFLAGS "${CFLAGS} ${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
 endif()
 
 string(REGEX REPLACE "^ " "" CFLAGS "${CFLAGS}")
@@ -75,9 +84,11 @@ string(REPLACE "-mandroid" "" _contents "${_contents}")
 file(WRITE "${BUILDDIR}/Configure" "${_contents}")
 
 if(BUILD_SHARED_LIBS)
-    set(SHARED shared)
+    set(SHARED "shared")
+    set(EXTENSION "${CMAKE_SHARED_LIBRARY_SUFFIX}")
 else()
-    set(SHARED no-shared)
+    set(SHARED "no-shared")
+    set(EXTENSION ".a")
 endif()
 
 if(CMAKE_HOST_WIN32)
@@ -130,10 +141,33 @@ add_custom_target(build_libs ALL
     VERBATIM
     WORKING_DIRECTORY "${BUILDDIR}"
     DEPENDS depend
-    BYPRODUCTS "${BUILDDIR}/libssl.a" "${BUILDDIR}/libcrypto.a"
+    BYPRODUCTS "${BUILDDIR}/libssl${EXTENSION}" "${BUILDDIR}/libcrypto${EXTENSION}"
 )
 
+if(APPLE AND BUILD_SHARED_LIBS)
+    if(DEFINED CMAKE_INSTALL_NAME_DIR)
+        set(ID_PREFIX "${CMAKE_INSTALL_NAME_DIR}")
+    else()
+        set(ID_PREFIX "@rpath")
+    endif()
+    
+    add_custom_command(
+        TARGET build_libs
+        COMMAND /usr/bin/install_name_tool -id "${ID_PREFIX}/libssl.1.0.0.dylib" "${BUILDDIR}/libssl.1.0.0.dylib"
+        COMMAND /usr/bin/install_name_tool -id "${ID_PREFIX}/libcrypto.1.0.0.dylib" "${BUILDDIR}/libcrypto.1.0.0.dylib"
+        COMMAND /usr/bin/install_name_tool -change "${CMAKE_INSTALL_PREFIX}/lib/libcrypto.1.0.0.dylib" "${ID_PREFIX}/libcrypto.1.0.0.dylib" "${BUILDDIR}/libssl.1.0.0.dylib"
+        VERBATIM
+    )
+endif()
+
 install(
-    FILES "${BUILDDIR}/libssl.a" "${BUILDDIR}/libcrypto.a"
+    FILES "${BUILDDIR}/libssl${EXTENSION}" "${BUILDDIR}/libcrypto${EXTENSION}"
     DESTINATION lib
 )
+
+if(BUILD_SHARED_LIBS)
+    install(
+        FILES "${BUILDDIR}/libssl.1.0.0${EXTENSION}" "${BUILDDIR}/libcrypto.1.0.0${EXTENSION}"
+        DESTINATION lib
+    )
+endif()

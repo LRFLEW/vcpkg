@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 project(bzip2 C)
+set(VERSION "1.0.6")
 
 if(CMAKE_BUILD_TYPE STREQUAL Debug)
     add_definitions(-DBZ_DEBUG) # enable extra assertions
@@ -16,8 +17,10 @@ set(LIBBZ2_SOURCES
 
 add_library(libbz2 ${LIBBZ2_SOURCES})
 set_target_properties(libbz2 PROPERTIES
-    ARCHIVE_OUTPUT_NAME bz2 # required for FindBzip2 to work
-    DEBUG_POSTFIX d)
+    OUTPUT_NAME bz2 # required for FindBzip2 to work
+    DEBUG_POSTFIX d
+    VERSION 1.0.6
+    SOVERSION 1)
 if(BUILD_SHARED_LIBS)
     target_compile_definitions(libbz2 PRIVATE -DBZ_BUILD_DLL)
 endif()
